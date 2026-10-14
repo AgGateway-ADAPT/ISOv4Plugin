@@ -303,7 +303,6 @@ namespace AgGateway.ADAPT.ISOv4Plugin.Mappers
                 //We interpolate sparse data by default.  One may wish to override this setting to examine the raw state/frequency of the data.
                 suppressDataInterpolation = false;
             }
-            SpatialRecordMapper spatialMapper = new SpatialRecordMapper(new RepresentationValueInterpolator(suppressDataInterpolation), sectionMapper, workingDataMapper, TaskDataMapper);
             IEnumerable<ISOSpatialRow> isoRecords = ReadTimeLog(isoTimeLog, this.TaskDataPath);
             bool useDeferredExecution = true;
             if (isoRecords != null)
@@ -413,6 +412,8 @@ namespace AgGateway.ADAPT.ISOv4Plugin.Mappers
 
                         var workingDatas = sections != null ? sections.SelectMany(x => x.GetWorkingDatas()).ToList() : new List<WorkingData>();
 
+                        //The mapper's interpolator holds per-enumeration state, so split operations must not share one.
+                        SpatialRecordMapper spatialMapper = new SpatialRecordMapper(new RepresentationValueInterpolator(suppressDataInterpolation), sectionMapper, workingDataMapper, TaskDataMapper);
                         operationData.GetSpatialRecords = () => spatialMapper.Map(isoRecords, workingDatas, productAllocations);
                         operationData.MaxDepth = sections.Count() > 0 ? sections.Select(s => s.Depth).Max() : 0;
                         operationData.DeviceElementUses = sectionMapper.ConvertToBaseTypes(sections.ToList());
@@ -440,7 +441,8 @@ namespace AgGateway.ADAPT.ISOv4Plugin.Mappers
         private List<List<string>> SplitElementsByProductProperties(Dictionary<string, List<ISOProductAllocation>> productAllocations, HashSet<string> loggedDeviceElementIds, ISODevice dvc)
         {
             //This function splits device elements logged by single TimeLog into groups based
-            //on product form/type referenced by these elements. This is done using following logic:
+            //on product form/type referenced by these elements. Seed products are kept apart even when their
+            //ProductType is Generic (a seed whose category is Variety but has no crop type). This is done using following logic:
             // - determine used products forms and list of device element ids for each form
             // - for each product form determine device elements from all other forms
             // - remove these device elements and their children from a copy of device hierarchy elements
@@ -448,7 +450,7 @@ namespace AgGateway.ADAPT.ISOv4Plugin.Mappers
             var deviceElementIdsByProductForm = productAllocations
                 .SelectMany(x => x.Value.Select(y => new { Product = GetProductByProductAllocation(y), Id = x.Key }))
                 .Where(x => x.Product != null)
-                .GroupBy(x => new { x.Product.Form, x.Product.ProductType }, x => x.Id)
+                .GroupBy(x => new { x.Product.Form, x.Product.ProductType, IsSeed = x.Product.Category == CategoryEnum.Variety }, x => x.Id)
                 .Select(x => x.Distinct().ToList())
                 .ToList();
 

@@ -464,8 +464,9 @@ namespace AgGateway.ADAPT.ISOv4Plugin.Mappers
         {
             VectorPrescription vectorRx = new VectorPrescription();
             ImportSharedPrescriptionProperties(task, workItem, vectorRx);
+            ImportSpecialTreatmentZoneRates(task, vectorRx);
             vectorRx.RxShapeLookups = new List<RxShapeLookup>();
-            foreach (ISOTreatmentZone treatmentZone in task.TreatmentZones)
+            foreach (ISOTreatmentZone treatmentZone in task.TreatmentZones.Where(tz => tz.Polygons.Any()))
             {
                 RxShapeLookup shapeLookup = new RxShapeLookup();
 
@@ -490,6 +491,28 @@ namespace AgGateway.ADAPT.ISOv4Plugin.Mappers
             }
 
             return vectorRx;
+        }
+
+        private void ImportSpecialTreatmentZoneRates(ISOTask task, VectorPrescription prescription)
+        {
+            //TSK @I and @J each reference one treatment zone. That zone can contain a PDV for each product,
+            //so map each product's matching PDV to its lookup.
+            foreach (RxProductLookup productLookup in prescription.RxProductLookups)
+            {
+                productLookup.LossOfGpsRate = ImportTreatmentZoneAsNumericRepValue(task.PositionLostTreatmentZone, productLookup);
+                productLookup.OutOfFieldRate = ImportTreatmentZoneAsNumericRepValue(task.OutOfFieldTreatmentZone, productLookup);
+            }
+        }
+
+        private NumericRepresentationValue ImportTreatmentZoneAsNumericRepValue(ISOTreatmentZone treatmentZone, RxProductLookup productLookup)
+        {
+            if (treatmentZone?.ProcessDataVariables == null)
+            {
+                return null;
+            }
+
+            ISOProcessDataVariable productPDV = treatmentZone.ProcessDataVariables.FirstOrDefault(pdv => productLookup.ProductId == TaskDataMapper.InstanceIDMap.GetADAPTID(pdv.ProductIdRef));
+            return productPDV?.AsNumericRepresentationValue(RepresentationMapper, ISOTaskData);
         }
 
         public ManualPrescription ImportManualPrescription(ISOTask task, WorkItem workItem)
