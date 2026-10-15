@@ -1051,9 +1051,31 @@ namespace AgGateway.ADAPT.ISOv4Plugin.Mappers
                             }
                         }
 
+                        if (!HasValidPosition(record))
+                        {
+                            continue;
+                        }
+
                         yield return record;
                     }
                 }
+            }
+
+            private static bool HasValidPosition(ISOSpatialRow record)
+            {
+                //Int32.MaxValue is the "not available" value for North/East.  NotAvailable status is kept because the exporter writes it for every row.
+                if (record.NorthPosition == int.MaxValue || record.EastPosition == int.MaxValue)
+                {
+                    return false;
+                }
+
+                if (!record.PositionStatus.HasValue)
+                {
+                    return true;
+                }
+
+                var status = (ISOPositionStatus)record.PositionStatus.Value;
+                return status != ISOPositionStatus.NoGPSFix && status != ISOPositionStatus.Error;
             }
 
             private static ushort? ReadUShort(double? value, bool specified, bool overrideTemplate, System.IO.BinaryReader binaryReader)
